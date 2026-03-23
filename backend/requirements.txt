@@ -14,12 +14,12 @@ numpy==1.26.4
 opencv-python-headless==4.9.0.80
 
 # ---- Face / Liveness ----
-mediapipe
+# mediapipe (commented to avoid build failure on Render free tier)
 
-# ---- Torch (stable CPU version) ----
-torch==2.2.2
-torchvision==0.17.2
-torchaudio==2.2.2
+# ---- Torch (stable + compatible) ----
+torch==2.1.2
+torchvision==0.16.2
+torchaudio==2.1.2
 
 # ---- Audio Model ----
 transformers
