@@ -2,16 +2,16 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Upload, Activity, User, Cpu, CheckCircle2,
-  History, ExternalLink, Clock, Menu, X, ChevronRight,
+  Menu, X, ChevronRight, LogOut,
 } from "lucide-react";
+import { auth } from "../firebase";
+import { signOut } from "firebase/auth";
 
-import { uploadFile, checkJobStatus, fetchHistory } from "../api";
+import { uploadFile, checkJobStatus } from "../api";
 import AnalysisTimeline from "./AnalysisTimeline";
 import ComparisonSlider from "./ComparisonSlider";
 import RiskGauge from "./RiskGauge";
 import LivenessChallenge from "./LivenessChallenge";
-import CreatorVerification from "./CreatorVerification";
-import LiveMonitor from "./LiveMonitor";
 import AudioAnalysis from "./AudioAnalysis";
 
 const INITIAL_STEPS = [
@@ -21,11 +21,11 @@ const INITIAL_STEPS = [
   { id: "4", name: "Report Generation", status: "pending" },
 ];
 
-const TABS = ["Analyze", "Audio Analysis", "Verify Creator", "Live Monitor", "History", "API"];
+const TABS = ["Analyze", "Audio Analysis", "Spoofing Test", "API"];
 
 const ease = [0.25, 0.1, 0.25, 1];
 
-export default function Dashboard({ user }) {
+export default function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("Analyze");
   const [jobId, setJobId] = useState(null);
   const [status, setStatus] = useState(null);
@@ -34,9 +34,6 @@ export default function Dashboard({ user }) {
   const [steps, setSteps] = useState(INITIAL_STEPS);
   const [typedText, setTypedText] = useState("");
 
-  const [historyItems, setHistoryItems] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-
   // Responsive
   const [mobileTabsOpen, setMobileTabsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -44,45 +41,9 @@ export default function Dashboard({ user }) {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (activeTab === "History") loadHistory();
-  }, [activeTab]);
-
-  useEffect(() => {
     setMobileTabsOpen(false);
     setSidebarOpen(false);
   }, [activeTab]);
-
-  const loadHistory = async () => {
-    setIsLoadingHistory(true);
-    try {
-      const data = await fetchHistory();
-      const normalized = (data || []).map((item) => ({
-        ...item,
-        id: item.id || item.job_id,
-        timestamp: item.timestamp || item.created_at,
-      }));
-      setHistoryItems(normalized);
-    } catch (error) {
-      console.error("Failed to load history", error);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
-
-  const viewHistoryItem = (item) => {
-    setStatus("COMPLETED");
-    setSteps((s) => s.map((x) => ({ ...x, status: "completed" })));
-    setResult({
-      ...item,
-      label: item.label,
-      score: item.score || item.fake_probability,
-      metadata: item.metadata || {},
-    });
-    const backendUrl = "http://localhost:8000";
-    const cleanPath = item.file_path?.startsWith("/") ? item.file_path : `/${item.file_path}`;
-    setImage(`${backendUrl}${cleanPath}?t=${Date.now()}`);
-    setActiveTab("Analyze");
-  };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -118,7 +79,6 @@ export default function Dashboard({ user }) {
         setResult(data);
         setSteps((s) => s.map((x) => ({ ...x, status: "completed" })));
         clearInterval(interval);
-        loadHistory();
       }
     }, 2000);
 
@@ -232,9 +192,18 @@ export default function Dashboard({ user }) {
             <Activity size={16} />
           </button>
 
-          <div className="flex items-center gap-2 text-[13px] text-zinc-400">
-            <User size={14} />
-            <span className="hidden sm:inline">{user?.displayName || "Guest"}</span>
+          <div className="flex items-center gap-3 text-[13px] text-zinc-400">
+            <div className="flex items-center gap-2">
+              <User size={14} />
+              <span className="hidden sm:inline">{user?.displayName || "Guest"}</span>
+            </div>
+            <button
+              onClick={async () => { await signOut(auth); if (onLogout) onLogout(); }}
+              className="flex items-center justify-center w-8 h-8 rounded-md bg-white/[0.04] border border-white/[0.06] text-zinc-500 hover:text-red-400 hover:border-red-500/20 transition-colors"
+              title="Sign out"
+            >
+              <LogOut size={14} />
+            </button>
           </div>
         </div>
       </motion.nav>
@@ -270,18 +239,6 @@ export default function Dashboard({ user }) {
             </h3>
             <AnalysisTimeline steps={steps} />
           </div>
-
-          <button
-            onClick={() => { setActiveTab("History"); setSidebarOpen(false); }}
-            className={`mt-6 w-full flex items-center gap-2 px-4 py-3 rounded-xl text-[12px] font-semibold transition-all min-h-[44px] border ${
-              activeTab === "History"
-                ? "bg-blue-500/[0.08] border-blue-500/[0.2] text-blue-400"
-                : "text-zinc-400 border-white/[0.06] hover:bg-white/[0.03]"
-            }`}
-          >
-            <History size={14} />
-            History Log
-          </button>
         </aside>
 
         {/* Sidebar overlay */}
@@ -295,298 +252,157 @@ export default function Dashboard({ user }) {
         {/* CENTER */}
         <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 overflow-y-auto">
           <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
 
-            {/* ═══ ANALYZE TAB ═══ */}
-            {activeTab === "Analyze" && (
-              <motion.div
-                key="analyze"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="max-w-[900px] mx-auto space-y-6"
-              >
-                {/* Liveness Challenge */}
-                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
-                  <LivenessChallenge />
-                </div>
+              {/* ═══ ANALYZE TAB ═══ */}
+              {activeTab === "Analyze" && (
+                <div className="max-w-[900px] mx-auto space-y-6">
+                  {/* Upload */}
+                  <motion.div
+                    whileHover={{ borderColor: "rgba(59, 130, 246, 0.25)" }}
+                    onClick={() => fileInputRef.current.click()}
+                    className="group border-2 border-dashed border-white/[0.08] rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-200 bg-white/[0.01] hover:bg-white/[0.02] min-h-[200px] py-10"
+                  >
+                    <div className="p-4 bg-white/[0.03] rounded-2xl group-hover:bg-blue-500/[0.06] transition-colors mb-3">
+                      <Upload size={32} className="text-zinc-500 group-hover:text-blue-400 transition-colors" />
+                    </div>
+                    <p className="text-zinc-300 font-medium text-[14px]">Upload media to analyze</p>
+                    <p className="text-[12px] text-zinc-600 mt-1">MP4, PNG, JPG, WEBP</p>
+                    <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
+                  </motion.div>
 
-                {/* Upload */}
-                <motion.div
-                  whileHover={{ borderColor: "rgba(59, 130, 246, 0.25)" }}
-                  onClick={() => fileInputRef.current.click()}
-                  className="group border-2 border-dashed border-white/[0.08] rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-200 bg-white/[0.01] hover:bg-white/[0.02] min-h-[200px] py-10"
-                >
-                  <div className="p-4 bg-white/[0.03] rounded-2xl group-hover:bg-blue-500/[0.06] transition-colors mb-3">
-                    <Upload size={32} className="text-zinc-500 group-hover:text-blue-400 transition-colors" />
-                  </div>
-                  <p className="text-zinc-300 font-medium text-[14px]">Upload media to analyze</p>
-                  <p className="text-[12px] text-zinc-600 mt-1">MP4, PNG, JPG, WEBP</p>
-                  <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
-                </motion.div>
-
-                {/* Comparison Slider */}
-                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 overflow-hidden">
-                  <AnimatePresence mode="wait">
-                    {image ? (
-                      <motion.div
-                        key="comparison-active"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <ComparisonSlider
-                          original={image}
-                          heatmap={
-                            result?.heatmap_url
-                              ? `http://localhost:8000/${result.heatmap_url}`
-                              : null
-                          }
-                          isProcessing={status === "PROCESSING"}
-                        />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="comparison-idle"
-                        className="h-[240px] sm:h-[300px] flex items-center justify-center text-zinc-600 text-[13px]"
-                      >
-                        <span className="animate-pulse">Waiting for input...</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Results Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Verdict */}
-                  <div className="p-6 rounded-2xl bg-[#111113] border border-white/[0.06] flex flex-col justify-center items-center">
-                    <p className="text-[11px] text-zinc-500 mb-2 uppercase tracking-wider font-medium">Verdict</p>
-                    <p className={`text-3xl font-bold ${
-                      result?.label === 'REAL' ? 'text-emerald-500' :
-                      result?.label === 'FAKE' ? 'text-red-500' : 'text-white'
-                    }`}>
-                      {result ? result.label : "—"}
-                    </p>
+                  {/* Comparison Slider */}
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 overflow-hidden">
+                    <AnimatePresence mode="wait">
+                      {image ? (
+                        <motion.div
+                          key="comparison-active"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <ComparisonSlider
+                            original={image}
+                            heatmap={
+                              result?.heatmap_url
+                                ? `http://localhost:8000/${result.heatmap_url}`
+                                : null
+                            }
+                            isProcessing={status === "PROCESSING"}
+                          />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="comparison-idle"
+                          className="h-[240px] sm:h-[300px] flex items-center justify-center text-zinc-600 text-[13px]"
+                        >
+                          <span className="animate-pulse">Waiting for input...</span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
-                  {/* Gauge */}
-                  <div className="p-6 rounded-2xl bg-[#111113] border border-white/[0.06] flex items-center justify-center">
-                    {result ? (
-                      <RiskGauge score={result.score || result.fake_probability} label={result.label} />
-                    ) : (
-                      <div className="h-28 flex items-center justify-center text-zinc-600 text-[13px]">
-                        Risk assessment pending
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* AI Explanation (inline for all screens) */}
-                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5 space-y-4">
-                  <h3 className="text-[12px] text-zinc-500 flex items-center gap-2 font-semibold tracking-wider">
-                    <CheckCircle2 size={12} className="text-emerald-500" />
-                    AI EXPLANATION
-                  </h3>
-                  {result?.metadata?.reason ? (
-                    <>
-                      <p className="text-zinc-300 leading-relaxed text-[14px] italic">
-                        "{typedText || "Analysing forensic signals…"}"
+                  {/* Results Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Verdict */}
+                    <div className="p-6 rounded-2xl bg-[#111113] border border-white/[0.06] flex flex-col justify-center items-center">
+                      <p className="text-[11px] text-zinc-500 mb-2 uppercase tracking-wider font-medium">Verdict</p>
+                      <p className={`text-3xl font-bold ${
+                        result?.label === 'REAL' ? 'text-emerald-500' :
+                        result?.label === 'FAKE' ? 'text-red-500' : 'text-white'
+                      }`}>
+                        {result ? result.label : "—"}
                       </p>
-                      {result.metadata?.regions?.length > 0 && (
-                        <div>
-                          <p className="text-[11px] text-zinc-500 mb-2 font-semibold tracking-wider">INFLUENTIAL REGIONS</p>
-                          <div className="flex flex-wrap gap-2">
-                            {result.metadata.regions.map((r) => (
-                              <span key={r} className="px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/[0.06] text-[11px] text-zinc-400">
-                                {r}
-                              </span>
-                            ))}
-                          </div>
+                    </div>
+
+                    {/* Gauge */}
+                    <div className="p-6 rounded-2xl bg-[#111113] border border-white/[0.06] flex items-center justify-center">
+                      {result ? (
+                        <RiskGauge score={result.score || result.fake_probability} label={result.label} />
+                      ) : (
+                        <div className="h-28 flex items-center justify-center text-zinc-600 text-[13px]">
+                          Risk assessment pending
                         </div>
                       )}
-                      <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                        <span className="text-[11px] text-zinc-500">Uncertainty</span>
-                        <span className="text-[13px] text-blue-400 font-mono">{result.metadata?.uncertainty || "N/A"}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-zinc-600 text-[13px] text-center py-8">
-                      <Cpu size={20} className="mx-auto mb-3 opacity-30 animate-pulse" />
-                      Upload media to begin analysis.
                     </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-
-            {/* ═══ AUDIO ANALYSIS TAB ═══ */}
-            {activeTab === "Audio Analysis" && (
-              <motion.div
-                key="audio"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="max-w-[900px] mx-auto"
-              >
-                <AudioAnalysis />
-              </motion.div>
-            )}
-
-            {/* ═══ VERIFY CREATOR TAB ═══ */}
-            {activeTab === "Verify Creator" && (
-              <motion.div
-                key="verify"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="max-w-[900px] mx-auto"
-              >
-                <CreatorVerification onComplete={() => setActiveTab("Analyze")} />
-              </motion.div>
-            )}
-
-            {/* ═══ LIVE MONITOR TAB ═══ */}
-            {activeTab === "Live Monitor" && (
-              <motion.div
-                key="monitor"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="max-w-[900px] mx-auto"
-              >
-                <LiveMonitor />
-              </motion.div>
-            )}
-
-            {/* ═══ HISTORY TAB ═══ */}
-            {activeTab === "History" && (
-              <motion.div
-                key="history"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="max-w-[900px] mx-auto space-y-6"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold tracking-tight">Analysis History</h2>
-                    <p className="text-zinc-500 text-[13px] mt-0.5">Review past classification reports.</p>
                   </div>
-                  <button
-                    onClick={loadHistory}
-                    className="p-2 hover:bg-white/[0.04] rounded-lg transition min-w-[40px] min-h-[40px] flex items-center justify-center"
-                  >
-                    <Activity size={16} className={isLoadingHistory ? "animate-spin text-blue-400" : "text-zinc-500"} />
-                  </button>
-                </div>
 
-                {isLoadingHistory ? (
-                  <div className="h-56 flex items-center justify-center text-zinc-500">
-                    <span className="animate-pulse">Loading history...</span>
-                  </div>
-                ) : historyItems.length > 0 ? (
-                  <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-[#111113]">
-                    {/* Desktop Table */}
-                    <div className="hidden sm:block overflow-x-auto">
-                      <table className="w-full text-left border-collapse min-w-[500px]">
-                        <thead className="bg-white/[0.03] text-[11px] text-zinc-500 font-medium tracking-wider">
-                          <tr>
-                            <th className="px-5 py-3.5">Media ID</th>
-                            <th className="px-5 py-3.5">Timestamp</th>
-                            <th className="px-5 py-3.5">Verdict</th>
-                            <th className="px-5 py-3.5 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/[0.04] text-[13px]">
-                          {historyItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
-                              <td className="px-5 py-3.5 font-mono text-[12px] text-zinc-400">#{item?.id?.slice(-8) || "N/A"}</td>
-                              <td className="px-5 py-3.5 text-zinc-400">
-                                <div className="flex items-center gap-2">
-                                  <Clock size={12} className="text-zinc-600" />
-                                  <span>{item?.timestamp ? new Date(item.timestamp).toLocaleString() : "Unknown"}</span>
-                                </div>
-                              </td>
-                              <td className="px-5 py-3.5">
-                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-block ${
-                                  item.label === 'REAL'
-                                    ? 'bg-emerald-500/[0.1] text-emerald-400 border border-emerald-500/[0.2]'
-                                    : 'bg-red-500/[0.1] text-red-400 border border-red-500/[0.2]'
-                                }`}>
-                                  {item.label}
+                  {/* AI Explanation (inline for all screens) */}
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5 space-y-4">
+                    <h3 className="text-[12px] text-zinc-500 flex items-center gap-2 font-semibold tracking-wider">
+                      <CheckCircle2 size={12} className="text-emerald-500" />
+                      AI EXPLANATION
+                    </h3>
+                    {result?.metadata?.reason ? (
+                      <>
+                        <p className="text-zinc-300 leading-relaxed text-[14px] italic">
+                          "{typedText || "Analysing forensic signals…"}"
+                        </p>
+                        {result.metadata?.regions?.length > 0 && (
+                          <div>
+                            <p className="text-[11px] text-zinc-500 mb-2 font-semibold tracking-wider">INFLUENTIAL REGIONS</p>
+                            <div className="flex flex-wrap gap-2">
+                              {result.metadata.regions.map((r) => (
+                                <span key={r} className="px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/[0.06] text-[11px] text-zinc-400">
+                                  {r}
                                 </span>
-                              </td>
-                              <td className="px-5 py-3.5 text-right">
-                                <button
-                                  onClick={() => viewHistoryItem(item)}
-                                  className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 font-semibold text-[12px] min-h-[40px]"
-                                >
-                                  View <ExternalLink size={12} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Mobile Cards */}
-                    <div className="sm:hidden divide-y divide-white/[0.04]">
-                      {historyItems.map((item) => (
-                        <div key={item.id} className="p-4 flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-mono text-[12px] text-zinc-400 truncate">#{item?.id?.slice(-8) || "N/A"}</p>
-                            <p className="text-[11px] text-zinc-600 mt-1 flex items-center gap-1">
-                              <Clock size={10} />
-                              {item?.timestamp ? new Date(item.timestamp).toLocaleDateString() : "Unknown"}
-                            </p>
+                              ))}
+                            </div>
                           </div>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
-                            item.label === 'REAL'
-                              ? 'bg-emerald-500/[0.1] text-emerald-400 border border-emerald-500/[0.2]'
-                              : 'bg-red-500/[0.1] text-red-400 border border-red-500/[0.2]'
-                          }`}>
-                            {item.label}
-                          </span>
-                          <button
-                            onClick={() => viewHistoryItem(item)}
-                            className="flex-shrink-0 p-2 text-blue-400 min-w-[44px] min-h-[44px] flex items-center justify-center"
-                          >
-                            <ExternalLink size={16} />
-                          </button>
+                        )}
+                        <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                          <span className="text-[11px] text-zinc-500">Uncertainty</span>
+                          <span className="text-[13px] text-blue-400 font-mono">{result.metadata?.uncertainty || "N/A"}</span>
                         </div>
-                      ))}
-                    </div>
+                      </>
+                    ) : (
+                      <div className="text-zinc-600 text-[13px] text-center py-8">
+                        <Cpu size={20} className="mx-auto mb-3 opacity-30 animate-pulse" />
+                        Upload media to begin analysis.
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-white/[0.06] p-16 text-center text-zinc-600">
-                    <History size={32} className="mx-auto mb-3 opacity-20" />
-                    <p className="text-[14px]">No analysis history yet.</p>
-                  </div>
-                )}
-              </motion.div>
-            )}
+                </div>
+              )}
 
-            {/* ═══ API TAB ═══ */}
-            {activeTab === "API" && (
-              <motion.div
-                key="api"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="max-w-[600px] mx-auto text-center py-20"
-              >
-                <Cpu size={40} className="mx-auto mb-5 text-zinc-700" />
-                <h2 className="text-xl font-bold text-zinc-300 mb-2">API Access</h2>
-                <p className="text-zinc-500 text-[14px]">Coming soon. Integrate TrustGuard into your platform.</p>
-              </motion.div>
-            )}
+              {/* ═══ AUDIO ANALYSIS TAB ═══ */}
+              {activeTab === "Audio Analysis" && (
+                <div className="max-w-[900px] mx-auto">
+                  <AudioAnalysis />
+                </div>
+              )}
+
+              {/* ═══ SPOOFING TEST TAB ═══ */}
+              {activeTab === "Spoofing Test" && (
+                <div className="w-full h-full max-w-[900px] mx-auto">
+                  <LivenessChallenge />
+                </div>
+              )}
+
+              {/* ═══ API TAB ═══ */}
+              {activeTab === "API" && (
+                <div className="max-w-[600px] mx-auto text-center py-20">
+                  <Cpu size={40} className="mx-auto mb-5 text-zinc-700" />
+                  <h2 className="text-xl font-bold text-zinc-300 mb-2">API Access</h2>
+                  <p className="text-zinc-500 text-[14px]">Coming soon. Integrate TrustGuard into your platform.</p>
+                </div>
+              )}
+
+              {/* ═══ FALLBACK ═══ */}
+              {!TABS.includes(activeTab) && (
+                <div className="max-w-[600px] mx-auto text-center py-20">
+                  <p className="text-zinc-400 text-[14px]">Invalid tab selected.</p>
+                </div>
+              )}
+
+            </motion.div>
           </AnimatePresence>
         </main>
       </div>

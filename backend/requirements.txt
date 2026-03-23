@@ -9,11 +9,18 @@ pydantic-settings
 python-multipart
 requests
 
-# ---- ML / CV (REQUIRED by current code) ----
+# ---- ML / CV ----
 numpy==1.26.4
-opencv-python==4.9.0.80
+opencv-python-headless==4.9.0.80
+
+# ---- Face / Liveness ----
 mediapipe
 
-# ---- Torch (required by services.py / explain.py) ----
-torch
-torchvision
+# ---- Torch (stable CPU version) ----
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
+
+# ---- Audio Model ----
+transformers
+librosa

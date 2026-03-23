@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "firebase/auth";
 
 const firebaseConfig = {
    apiKey: "AIzaSyAX7nop2AbcPc9Rbn4nsjHz7OQlwVAPnho",
@@ -14,9 +14,24 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const provider = new GoogleAuthProvider();
+
+const provider = new GoogleAuthProvider();
+// Force account selection every time so users aren't stuck on a cached account
+provider.setCustomParameters({ prompt: "select_account" });
+
+export { onAuthStateChanged };
 
 export const loginWithGoogle = async () => {
-  const result = await signInWithPopup(auth, provider);
-  return result.user;
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  } catch (error) {
+    // auth/popup-closed-by-user is not a real error — user just cancelled
+    if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
+      console.log("Sign-in cancelled by user");
+      return null;
+    }
+    console.error("Google sign-in error:", error.code, error.message);
+    throw error;
+  }
 };

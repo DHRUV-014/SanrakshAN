@@ -1,15 +1,26 @@
 export async function startCamera(videoRef) {
+  // Check if getUserMedia is available
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error("Camera API not available. Use HTTPS or localhost.")
+  }
+
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: true
+    video: true,
+    audio: false,
   })
 
-  videoRef.current.srcObject = stream
+  if (videoRef.current) {
+    videoRef.current.srcObject = stream
+    // Ensure playback starts
+    await videoRef.current.play().catch(() => {})
+  }
 }
 
 export function captureFrame(videoRef, canvasRef) {
-
   const video = videoRef.current
   const canvas = canvasRef.current
+
+  if (!video || !canvas) return Promise.resolve(null)
 
   canvas.width = video.videoWidth
   canvas.height = video.videoHeight
@@ -23,10 +34,12 @@ export function captureFrame(videoRef, canvasRef) {
 }
 
 export function stopCamera(videoRef) {
-
-  const stream = videoRef.current.srcObject
+  const stream = videoRef.current?.srcObject
 
   if (!stream) return
 
   stream.getTracks().forEach(track => track.stop())
+  if (videoRef.current) {
+    videoRef.current.srcObject = null
+  }
 }

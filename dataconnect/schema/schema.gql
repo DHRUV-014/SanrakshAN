@@ -1,0 +1,43 @@
+type User @table {
+  authId: String!
+  email: String!
+  createdAt: Timestamp!
+  organizationName: String
+  subscriptionType: SubscriptionType
+}
+
+type MediaSubmission @table {
+  submissionUrl: String!
+  submissionType: String!
+  status: String!
+  createdAt: Timestamp!
+  originalFilename: String
+  isPriority: Boolean
+  user: User
+}
+
+type AnalysisReport @table {
+  deepfakeProbability: Float!
+  status: String!
+  analysisEngineVersion: String!
+  createdAt: Timestamp!
+  detailedReportJson: String
+  confidenceScore: Float
+  mediaSubmission: MediaSubmission
+}
+
+type Feedback @table {
+  feedbackType: String!
+  createdAt: Timestamp!
+  comments: String
+  user: User
+  analysisReport: AnalysisReport
+}
+
+type SubscriptionType @table {
+  name: String!
+  maxSubmissionsPerMonth: Int!
+  priorityProcessingEnabled: Boolean!
+  price: String
+  description: String
+}
