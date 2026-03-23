@@ -14,10 +14,7 @@ const UploadZone = ({ onUpload }) => {
 
   return (
     <motion.div
-      onDragOver={(e) => {
-        e.preventDefault();
-        setIsDragging(true);
-      }}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
@@ -25,46 +22,44 @@ const UploadZone = ({ onUpload }) => {
         handleFile(e.dataTransfer.files?.[0]);
       }}
       onClick={() => fileInputRef.current?.click()}
-      whileHover={{ scale: 1.01, borderColor: "rgba(59, 130, 246, 0.5)" }}
-      whileTap={{ scale: 0.99 }}
-      className={`relative group mt-8 aspect-[21/9] w-full rounded-[32px] border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 overflow-hidden
+      className={`relative group w-full rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden min-h-[160px] sm:min-h-[180px] py-8 sm:py-10
         ${isDragging
-          ? "border-blue-500 bg-blue-500/10"
-          : "border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]"
+          ? "border-blue-500/50 bg-blue-500/[0.06]"
+          : "border-white/[0.08] bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/[0.12]"
         }`}
     >
-      {/* Background Ambient Glow */}
-      <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-      {/* Decorative Noise/Texture */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
-
       <motion.div
-        animate={isDragging ? { y: -10 } : { y: 0 }}
-        className={`p-5 rounded-3xl border transition-all duration-300 mb-4
+        animate={isDragging ? { y: -6 } : { y: 0 }}
+        className={`p-3 sm:p-4 rounded-xl border transition-all duration-200 mb-3
           ${isDragging
-            ? "bg-blue-600 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
-            : "bg-white/[0.03] border-white/[0.08] group-hover:border-blue-500/50 group-hover:bg-blue-500/10"
+            ? "bg-blue-500 border-blue-400"
+            : "bg-white/[0.03] border-white/[0.06] group-hover:border-blue-500/30 group-hover:bg-blue-500/[0.06]"
           }`}
       >
         <Upload
-          size={32}
-          className={isDragging ? "text-white" : "text-slate-500 group-hover:text-blue-400"}
+          size={24}
+          className={`sm:hidden ${isDragging ? "text-white" : "text-zinc-500 group-hover:text-blue-400"} transition-colors`}
+        />
+        <Upload
+          size={28}
+          className={`hidden sm:block ${isDragging ? "text-white" : "text-zinc-500 group-hover:text-blue-400"} transition-colors`}
         />
       </motion.div>
 
-      <div className="text-center z-10">
-        <p className="text-sm font-semibold text-slate-300 tracking-tight">
-          {isDragging ? "Drop to initiate scan" : "Drop forensic source or click to browse"}
+      <div className="text-center z-10 px-4">
+        <p className="text-[13px] font-medium text-zinc-300">
+          {isDragging ? "Drop to upload" : "Drop file or click to browse"}
         </p>
 
-        <div className="flex items-center justify-center gap-4 mt-3">
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold">
-            <FileCode size={12} /> H.264 / RAW
+        <div className="flex items-center justify-center gap-3 mt-2">
+          <span className="flex items-center gap-1.5 text-[11px] text-zinc-500 font-medium">
+            <FileCode size={11} />
+            H.264 / RAW
           </span>
-          <span className="w-1 h-1 rounded-full bg-white/10" />
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold">
-            <ShieldAlert size={12} /> Metadata-Safe
+          <span className="w-1 h-1 rounded-full bg-white/[0.08]" />
+          <span className="flex items-center gap-1.5 text-[11px] text-zinc-500 font-medium">
+            <ShieldAlert size={11} />
+            Metadata-Safe
           </span>
         </div>
       </div>

@@ -3,7 +3,7 @@ import cv2
 import traceback
 
 from app.firebase_auth import firestore_db
-from services.services import analyze_media
+from uploads.services.services import analyze_media
 from utils.face_engine import FaceEngine
 from utils.explain import generate_heatmap
 

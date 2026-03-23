@@ -1,53 +1,26 @@
-import ComparisonSlider from "./ComparisonSlider";
-import RiskGauge from "./RiskGauge";
-
 export default function ResultCard({ result }) {
   if (!result) return null;
 
-  const labelColor =
+  const labelColorClass =
     result.label === "FAKE"
-      ? "#ff4d4f"
+      ? "text-red-500"
       : result.label === "REAL"
-      ? "#52c41a"
-      : "#faad14";
+      ? "text-emerald-500"
+      : "text-amber-400";
 
   return (
-    <div
-      style={{
-        marginTop: "2rem",
-        maxWidth: "460px",
-        width: "100%",
-      }}
-    >
-      {/* Result */}
-      <h2 style={{ marginBottom: "0.4rem", fontSize: "1.5rem", fontWeight: "bold" }}>
-        Result: <span style={{ color: labelColor }}>{result.label}</span>
+    <div className="w-full max-w-[420px]">
+      <h2 className="mb-1.5 text-lg sm:text-xl font-bold text-white">
+        Result: <span className={labelColorClass}>{result.label}</span>
       </h2>
 
-      <p style={{ opacity: 0.85 }}>
-        Confidence Score: <strong>{result.score * 100}%</strong>
+      <p className="text-[14px] text-zinc-300">
+        Confidence: <strong>{(result.score * 100).toFixed(1)}%</strong>
       </p>
 
-      <p style={{ opacity: 0.7, marginTop: "0.3rem" }}>
+      <p className="text-[13px] text-zinc-500 mt-1">
         Faces Detected: <strong>{result.faces_detected}</strong>
       </p>
-
-      {/* Gauge */}
-      <div style={{ marginTop: "1.8rem" }}>
-        <RiskGauge score={result.score} label={result.label} />
-      </div>
-
-      {/* Heatmap */}
-      {result.face_url && result.heatmap_url && (
-        <div style={{ marginTop: "2.5rem" }}>
-          <h3 style={{ marginBottom: "0.8rem" }}>Visual Explanation</h3>
-
-          <ComparisonSlider
-            originalUrl={`http://localhost:8000/${result.face_url}`}
-            heatmapUrl={`http://localhost:8000/${result.heatmap_url}`}
-          />
-        </div>
-      )}
     </div>
   );
 }

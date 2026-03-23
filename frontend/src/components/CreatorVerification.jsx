@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ShieldCheck, UserCheck, CheckCircle2 } from "lucide-react";
 import { startCamera, captureFrame, stopCamera } from "../utils/camera";
 
-// --- Pseudo API Services for Creator Verification ---
 const fakeDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function startCreatorVerification() {
@@ -12,12 +11,10 @@ async function startCreatorVerification() {
 }
 
 async function sendVerificationFrame() {
-  // Simulate network POST /verify/creator/frame/{session_id}
   await fakeDelay(200);
 }
 
 async function finishCreatorVerification() {
-  // Simulate network GET /verify/creator/result/{session_id}
   await fakeDelay(1500);
   return {
     verified: true,
@@ -31,7 +28,6 @@ export default function CreatorVerification({ onComplete }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Steps: "idle" | "detecting" | "scanning" | "verified"
   const [step, setStep] = useState("idle");
   const [progress, setProgress] = useState(0);
 
@@ -41,7 +37,6 @@ export default function CreatorVerification({ onComplete }) {
     try {
       const session = await startCreatorVerification();
       
-      // Simulate capturing 5 frames over 2.5 seconds
       for (let i = 1; i <= 5; i++) {
         await captureFrame(videoRef, canvasRef);
         await sendVerificationFrame(session.session_id);
@@ -53,9 +48,8 @@ export default function CreatorVerification({ onComplete }) {
       if (result.verified) {
         setStep("verified");
       } else {
-        setStep("idle"); // reset on fail (simplified)
+        setStep("idle");
       }
-
     } catch (e) {
       console.error(e);
       setStep("idle");
@@ -63,15 +57,13 @@ export default function CreatorVerification({ onComplete }) {
   };
 
   useEffect(() => {
-    // Start camera immediately on mount
     startCamera(videoRef);
     
-    // Auto start detection after a short delay
     const timer = setTimeout(() => {
        setStep("detecting");
        setTimeout(() => {
           startVerificationFlow();
-       }, 2000); // 2 seconds to position face
+       }, 2000);
     }, 1000);
 
     return () => {
@@ -81,38 +73,31 @@ export default function CreatorVerification({ onComplete }) {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[500px] w-full max-w-2xl mx-auto text-center font-sans relative overflow-hidden bg-black rounded-3xl p-8 border border-white/10 shadow-2xl">
+    <div className="flex flex-col items-center justify-center min-h-[420px] w-full max-w-2xl mx-auto text-center relative overflow-hidden bg-[#111113] rounded-2xl p-6 sm:p-8 border border-white/[0.06]">
       
       <AnimatePresence mode="wait">
         
-        {/* Step 1 & 2: Camera View */}
         {step !== "verified" && (
           <motion.div 
             key="camera-view"
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.05 }}
+            exit={{ opacity: 0, scale: 1.03 }}
             className="flex flex-col items-center w-full"
           >
-            <h2 className="text-2xl font-semibold tracking-tight text-white mb-2">Verify Your Identity</h2>
-            <p className="text-sm text-slate-400 mb-8">
-               {step === "idle" ? "Initializing secure camera stream..." : 
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mb-2">Verify Your Identity</h2>
+            <p className="text-[13px] text-zinc-400 mb-8 px-2">
+               {step === "idle" ? "Initializing camera..." : 
                 step === "detecting" ? "Look directly at the camera" :
-                "Hold still. Analyzing facial depth mapping..."}
+                "Hold still. Analyzing..."}
             </p>
 
-            <div className="relative mb-12 flex items-center justify-center">
-               {/* Fixed width/height container to maintain the circle */}
+            <div className="relative mb-10 flex items-center justify-center">
                <div 
-                 className="relative overflow-hidden flex items-center justify-center"
+                 className="relative overflow-hidden flex items-center justify-center w-[240px] h-[240px] sm:w-[280px] sm:h-[280px] rounded-full transition-all duration-500"
                  style={{ 
-                    width: "320px", 
-                    height: "320px",
-                    borderRadius: "50%",
-                    // Ring matching the Apple FaceID prompt
-                    border: step === "detecting" ? "4px solid rgba(255,255,255,0.2)" : "4px solid rgba(37,99,235,0.8)",
-                    boxShadow: step === "scanning" ? "0 0 40px rgba(37,99,235,0.4)" : "0 0 60px rgba(0,150,255,0.15)",
-                    transition: "all 0.5s ease"
+                    border: step === "detecting" ? "3px solid rgba(255,255,255,0.15)" : "3px solid rgba(59,130,246,0.6)",
+                    boxShadow: step === "scanning" ? "0 0 30px rgba(59,130,246,0.2)" : "none",
                  }}
                >
                  <video
@@ -123,43 +108,41 @@ export default function CreatorVerification({ onComplete }) {
                    className="absolute inset-0 w-full h-full object-cover scale-125 select-none pointer-events-none"
                  />
 
-                 {/* Scanning Overlay Effect */}
                  {step === "scanning" && (
                     <motion.div 
-                      className="absolute inset-0 bg-blue-500/20 mix-blend-overlay pointer-events-none"
-                      animate={{ opacity: [0, 0.5, 0] }}
+                      className="absolute inset-0 bg-blue-500/15 mix-blend-overlay pointer-events-none"
+                      animate={{ opacity: [0, 0.4, 0] }}
                       transition={{ duration: 1.5, repeat: Infinity }}
                     />
                  )}
                </div>
 
-               {/* External rotating scan ring */}
                {step === "scanning" && (
                  <motion.div 
-                   className="absolute w-[360px] h-[360px] rounded-full border border-blue-400/30 border-dashed pointer-events-none"
+                   className="absolute w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] rounded-full border border-blue-400/20 border-dashed pointer-events-none"
                    animate={{ rotate: 360 }}
                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
                  />
                )}
             </div>
 
-            {/* Progress Bar */}
-            <div className="w-full max-w-xs h-12 flex flex-col justify-center items-center">
+            {/* Progress */}
+            <div className="w-full max-w-[280px] h-12 flex flex-col justify-center items-center">
                <AnimatePresence>
                  {step === "scanning" && (
                     <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
+                      exit={{ opacity: 0, y: -8 }}
                       className="w-full"
                     >
-                       <div className="flex justify-between text-xs text-blue-400 mb-2 font-mono uppercase tracking-widest">
-                         <span>Authenticity Scan</span>
+                       <div className="flex justify-between text-[11px] text-blue-400 mb-2 font-mono">
+                         <span>Scanning</span>
                          <span>{Math.round(progress)}%</span>
                        </div>
-                       <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                       <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                          <motion.div 
-                            className="h-full bg-blue-500 shadow-[0_0_10px_rgba(37,99,235,0.8)]"
+                            className="h-full bg-blue-500"
                             animate={{ width: `${progress}%` }}
                             transition={{ duration: 0.2 }}
                          />
@@ -171,39 +154,39 @@ export default function CreatorVerification({ onComplete }) {
           </motion.div>
         )}
 
-        {/* Step 3: Verified Result */}
+        {/* Verified */}
         {step === "verified" && (
           <motion.div 
             key="verified-view"
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center w-full py-12"
+            className="flex flex-col items-center w-full py-8"
           >
-             <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(16,185,129,0.2)]">
-               <CheckCircle2 size={48} className="text-emerald-500" />
+             <div className="w-20 h-20 bg-emerald-500/[0.08] rounded-full flex items-center justify-center mb-5">
+               <CheckCircle2 size={40} className="text-emerald-500" />
              </div>
              
-             <h2 className="text-3xl font-bold tracking-tight text-white mb-2">TrustGuard Verified Creator</h2>
+             <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Verified Creator</h2>
              
-             <div className="flex flex-col items-start gap-4 mt-8 mb-12 text-sm text-slate-300">
+             <div className="flex flex-col items-start gap-3 mt-6 mb-10 text-[14px] text-zinc-300">
                 <div className="flex items-center gap-3">
-                   <ShieldCheck size={18} className="text-emerald-400" />
+                   <ShieldCheck size={17} className="text-emerald-400 flex-shrink-0" />
                    <span>Live Presence Verified</span>
                 </div>
                 <div className="flex items-center gap-3">
-                   <UserCheck size={18} className="text-emerald-400" />
+                   <UserCheck size={17} className="text-emerald-400 flex-shrink-0" />
                    <span>Facial Consistency Confirmed</span>
                 </div>
              </div>
 
-             <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-md mb-10 inline-flex items-center gap-2">
+             <div className="bg-emerald-500/[0.08] border border-emerald-500/[0.15] px-4 py-2 rounded-lg mb-8 inline-flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Status: Verified</span>
+                <span className="text-[12px] font-semibold text-emerald-400 tracking-wider">VERIFIED</span>
              </div>
 
              <button 
                onClick={() => onComplete && onComplete()}
-               className="px-8 py-4 bg-white hover:bg-slate-200 text-black rounded-full font-semibold transition-colors shadow-lg"
+               className="w-full sm:w-auto px-7 py-3.5 bg-white hover:bg-zinc-200 text-black rounded-xl font-semibold transition-colors text-[14px] min-h-[48px]"
              >
                Attach Verification to Upload
              </button>

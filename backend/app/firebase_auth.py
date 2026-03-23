@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 import firebase_admin
 from fastapi import Depends, HTTPException, status
@@ -65,6 +66,30 @@ def firebase_auth(
         decoded_token = auth.verify_id_token(credentials.credentials)
         return decoded_token
 
+    except exceptions.FirebaseError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired Firebase token",
+        )
+
+
+def analyze_endpoint_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> Optional[dict]:
+    """
+    For POST /analyze:
+    - No firebase_key.json: same as legacy firebase_auth — always mock user (async jobs in dev).
+    - Firebase configured + Bearer → verified user dict (async dashboard).
+    - Firebase configured + no Bearer → None (public sync demo for landing; requires no auth).
+    """
+    if not os.path.exists(FIREBASE_KEY_PATH):
+        return {"uid": "mock_user_123", "email": "mock@example.com"}
+
+    if not credentials or credentials.scheme.lower() != "bearer":
+        return None
+
+    try:
+        return auth.verify_id_token(credentials.credentials)
     except exceptions.FirebaseError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

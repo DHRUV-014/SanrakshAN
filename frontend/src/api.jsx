@@ -47,10 +47,26 @@ export const checkJobStatus = async (jobId) => {
 };
 
 // -------------------------------
-// Fetch analysis history ✅ FIXED
+// Fetch analysis history
 // -------------------------------
 export const fetchHistory = async () => {
   const response = await api.get("/api/history");
+  return response.data;
+};
+
+// -------------------------------
+// Analyze audio file
+// -------------------------------
+export const analyzeAudio = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await api.post("/analyze-audio", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
   return response.data;
 };
 
