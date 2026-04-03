@@ -49,6 +49,8 @@ _LOCAL_DEV_ORIGIN_REGEX = (
     r"|moz-extension://[\w-]+)$"
 )
 
+_FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -56,8 +58,15 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
+        *([_FRONTEND_URL] if _FRONTEND_URL else []),
     ],
-    allow_origin_regex=_LOCAL_DEV_ORIGIN_REGEX,
+    allow_origin_regex=(
+        r"^(https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+        r"|chrome-extension://[a-z]{32}"
+        r"|moz-extension://[\w-]+"
+        r"|https://[\w-]+\.vercel\.app"
+        r"|https://[\w-]+\.netlify\.app)$"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

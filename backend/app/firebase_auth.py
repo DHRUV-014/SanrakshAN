@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Optional
 
@@ -13,18 +14,34 @@ from firebase_admin import auth, firestore, exceptions, credentials
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # backend/
 FIREBASE_KEY_PATH = os.path.join(BASE_DIR, "firebase_key.json")
 
+_firebase_ready = False
+
 if not firebase_admin._apps:
+    # Option 1: key file on disk (local dev)
     if os.path.exists(FIREBASE_KEY_PATH):
         cred = credentials.Certificate(FIREBASE_KEY_PATH)
         firebase_admin.initialize_app(cred)
+        _firebase_ready = True
+    # Option 2: key JSON passed as environment variable (Render / cloud)
+    elif os.environ.get("FIREBASE_KEY_JSON"):
+        try:
+            key_dict = json.loads(os.environ["FIREBASE_KEY_JSON"])
+            cred = credentials.Certificate(key_dict)
+            firebase_admin.initialize_app(cred)
+            _firebase_ready = True
+            print("Firebase initialized from FIREBASE_KEY_JSON env var.")
+        except Exception as e:
+            print(f"WARNING: Failed to initialize Firebase from env var: {e}. Running in mock mode.")
     else:
-        print(f"WARNING: Firebase key not found at {FIREBASE_KEY_PATH}. Running in mock mode.")
+        print(f"WARNING: No Firebase credentials found. Running in mock mode.")
+else:
+    _firebase_ready = True
 
 # --------------------------------------------------
 # Global Firestore client
 # --------------------------------------------------
 
-if os.path.exists(FIREBASE_KEY_PATH):
+if _firebase_ready:
     firestore_db = firestore.client()
 else:
     class MockFirestore:
@@ -32,6 +49,8 @@ else:
             return self
         def document(self, name):
             return self
+        def update(self, data):
+            print(f"MOCK DB UPDATE: {data}")
         def set(self, data):
             print(f"MOCK DB SET: {data}")
         def get(self):
@@ -40,6 +59,14 @@ else:
                 def to_dict(self):
                     return {"status": "MOCK_DONE"}
             return MockDoc()
+        def where(self, *a, **kw):
+            return self
+        def order_by(self, *a, **kw):
+            return self
+        def limit(self, *a, **kw):
+            return self
+        def stream(self):
+            return []
     firestore_db = MockFirestore()
 
 # --------------------------------------------------
@@ -52,8 +79,7 @@ security = HTTPBearer(auto_error=False)
 def firebase_auth(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
-    # If no key, return mock user
-    if not os.path.exists(FIREBASE_KEY_PATH):
+    if not _firebase_ready:
         return {"uid": "mock_user_123", "email": "mock@example.com"}
 
     if not credentials or credentials.scheme.lower() != "bearer":
@@ -65,7 +91,6 @@ def firebase_auth(
     try:
         decoded_token = auth.verify_id_token(credentials.credentials)
         return decoded_token
-
     except exceptions.FirebaseError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,11 +103,11 @@ def analyze_endpoint_user(
 ) -> Optional[dict]:
     """
     For POST /analyze:
-    - No firebase_key.json: same as legacy firebase_auth — always mock user (async jobs in dev).
+    - Firebase not configured: always mock user.
     - Firebase configured + Bearer → verified user dict (async dashboard).
-    - Firebase configured + no Bearer → None (public sync demo for landing; requires no auth).
+    - Firebase configured + no Bearer → None (public sync demo).
     """
-    if not os.path.exists(FIREBASE_KEY_PATH):
+    if not _firebase_ready:
         return {"uid": "mock_user_123", "email": "mock@example.com"}
 
     if not credentials or credentials.scheme.lower() != "bearer":
