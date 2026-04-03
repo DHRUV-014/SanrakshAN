@@ -14,7 +14,7 @@ numpy==1.26.4
 opencv-python-headless==4.9.0.80
 
 # ---- Face / Liveness ----
-# mediapipe (commented to avoid build failure on Render free tier)
+mediapipe
 
 # ---- Torch (stable + compatible) ----
 torch==2.1.2
