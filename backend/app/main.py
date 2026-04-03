@@ -75,11 +75,17 @@ app.add_middleware(
 # --------------------------------------------------
 # STATIC FILES
 # --------------------------------------------------
-os.makedirs("faces", exist_ok=True)
-os.makedirs("heatmaps", exist_ok=True)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_FACES_DIR    = os.path.join(_BASE_DIR, "faces")
+_HEATMAPS_DIR = os.path.join(_BASE_DIR, "heatmaps")
+_UPLOADS_DIR  = os.path.join(_BASE_DIR, "uploads")
 
-app.mount("/faces", StaticFiles(directory="faces"), name="faces")
-app.mount("/heatmaps", StaticFiles(directory="heatmaps"), name="heatmaps")
+os.makedirs(_FACES_DIR,    exist_ok=True)
+os.makedirs(_HEATMAPS_DIR, exist_ok=True)
+os.makedirs(_UPLOADS_DIR,  exist_ok=True)
+
+app.mount("/faces",    StaticFiles(directory=_FACES_DIR),    name="faces")
+app.mount("/heatmaps", StaticFiles(directory=_HEATMAPS_DIR), name="heatmaps")
 
 # --------------------------------------------------
 # REGISTER ROUTES
@@ -89,8 +95,7 @@ app.include_router(history.router)
 # --------------------------------------------------
 # UPLOADS
 # --------------------------------------------------
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+UPLOAD_DIR = _UPLOADS_DIR
 
 # --------------------------------------------------
 # ACTIVE CHALLENGE SESSIONS STORAGE
@@ -106,6 +111,27 @@ verification_sessions = {}
 # VIDEO CALL MONITOR INSTANCES (per client)
 # --------------------------------------------------
 video_monitors = {}
+
+
+def _save_to_firestore(job_id: str, user_id: str, payload: dict):
+    """Save completed analysis result to Firestore for history."""
+    try:
+        from google.cloud.firestore import SERVER_TIMESTAMP
+        firestore_db.collection("jobs").document(job_id).set({
+            "status": "COMPLETED",
+            "user_id": user_id,
+            "created_at": SERVER_TIMESTAMP,
+            "label": payload.get("label"),
+            "score": payload.get("score"),
+            "confidence": payload.get("confidence"),
+            "faces_detected": payload.get("faces_detected", 0),
+            "heatmap_url": payload.get("heatmap_url"),
+            "explanation": payload.get("explanation"),
+            "tts_url": payload.get("tts_url"),
+            "metadata": payload.get("metadata", {}),
+        })
+    except Exception as e:
+        print(f"Firestore save failed (non-critical): {e}")
 
 
 def _want_public_sync_analyze(
@@ -137,11 +163,10 @@ def _run_public_sync_analysis(file_path: str, job_id: str) -> dict:
 
         if faces:
             primary = faces[0]
-            os.makedirs("heatmaps", exist_ok=True)
-            heatmap_path = f"heatmaps/{job_id}_heatmap.jpg"
+            heatmap_path = os.path.join(_HEATMAPS_DIR, f"{job_id}_heatmap.jpg")
             heatmap = generate_heatmap(primary["model"])
             cv2.imwrite(heatmap_path, heatmap)
-            heatmap_url = f"/{heatmap_path.replace(os.sep, '/')}"
+            heatmap_url = f"/heatmaps/{job_id}_heatmap.jpg"
 
     score = float(result.get("fake_probability") or result.get("score", 0.0))
     label = result["label"]
@@ -254,40 +279,26 @@ async def analyze(
         buffer.write(contents)
     print("Saved upload to:", os.path.abspath(file_path), "bytes:", len(contents))
 
-    public_sync = _want_public_sync_analyze(x_public_demo, user)
-
-    # Authenticated: existing async pipeline (dashboard / signed-in clients)
-    if not public_sync and user is not None:
-        firestore_db.collection("jobs").document(job_id).set({
-            "status": "PENDING",
-            "user_id": user["uid"],
-        })
-
-        background_tasks.add_task(
-            run_analysis_task,
-            job_id=job_id,
-            file_path=file_path,
-            user_id=user["uid"],
-        )
-
-        out = {
-            "job_id": job_id,
-            "status": "PENDING",
-        }
-        print("Final /analyze response (async):", out)
-        return out
-
-    # Public landing demo: run ML immediately, then delete temp upload
+    # Run ML synchronously for everyone — fastest, most reliable
     try:
         payload = _run_public_sync_analysis(file_path, job_id)
-        print("Final /analyze response (sync):", payload)
+        payload["status"] = "COMPLETED"
+
+        # Save to Firestore in background for history (authenticated users only)
+        if user is not None:
+            background_tasks.add_task(
+                _save_to_firestore,
+                job_id=job_id,
+                user_id=user["uid"],
+                payload=payload,
+            )
+
+        print("Final /analyze response:", payload)
         return payload
     except Exception as e:
-        print("❌ PUBLIC /analyze FAILED")
+        print("❌ /analyze FAILED")
         print(traceback.format_exc())
-        err_body = {"status": "error", "message": str(e)}
-        print("Returning error JSON:", err_body)
-        return JSONResponse(status_code=200, content=err_body)
+        return JSONResponse(status_code=200, content={"status": "error", "message": str(e)})
     finally:
         try:
             if os.path.isfile(file_path):
@@ -420,7 +431,7 @@ async def analyze_audio_endpoint(file: UploadFile = File(...)):
 
             # Video heatmap — run on a saved copy before temp file is deleted
             vid_heatmap = generate_video_heatmap(
-                file_path, n_frames=6, out_dir="heatmaps", job_id=job_id
+                file_path, n_frames=6, out_dir=_HEATMAPS_DIR, job_id=job_id
             )
             result["heatmap_url"]      = vid_heatmap.get("heatmap_url")
             result["key_frame_index"]  = vid_heatmap.get("key_frame_index")

@@ -349,18 +349,23 @@ def _reasons_from_method(method: str, confidence: float) -> list:
 # 4. TTS — explanation text → MP3
 # ──────────────────────────────────────────────────────────────────────────────
 
-def tts_explanation(text: str, job_id: str, out_dir: str = "heatmaps") -> Optional[str]:
+_EXPLAIN_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_TTS_DIR  = os.path.join(_EXPLAIN_BASE_DIR, "heatmaps")
+
+
+def tts_explanation(text: str, job_id: str, out_dir: str = "") -> Optional[str]:
     """
     Convert text to speech MP3 via gTTS (requires internet).
     Returns URL path like "/heatmaps/abc123_tts.mp3", or None on failure.
     """
     try:
         from gtts import gTTS
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"{job_id}_tts.mp3")
+        save_dir = out_dir if out_dir else _DEFAULT_TTS_DIR
+        os.makedirs(save_dir, exist_ok=True)
+        out_path = os.path.join(save_dir, f"{job_id}_tts.mp3")
         gTTS(text=text, lang="en", slow=False).save(out_path)
         logger.info("TTS saved: %s", out_path)
-        return f"/{out_path.replace(os.sep, '/')}"
+        return f"/heatmaps/{job_id}_tts.mp3"
     except ImportError:
         logger.warning("gTTS not installed. Run: pip install gtts")
         return None

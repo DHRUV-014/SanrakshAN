@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Code, Copy, Check, Key, Terminal, Globe, Zap, Lock, ChevronDown, ChevronUp } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://sanrakshan-api.onrender.com";
+const API_BASE = import.meta.env.VITE_API_URL || "https://trustguard-5olg.onrender.com";
 const MOCK_KEY = "tg_live_sk_7f3a2e9b1c4d8f2a6e0b5c3d9a7f1e4";
 
 function CopyButton({ text }) {

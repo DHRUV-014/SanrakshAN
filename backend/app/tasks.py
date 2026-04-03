@@ -7,6 +7,9 @@ from uploads.services.services import analyze_media
 from utils.face_engine import FaceEngine
 from utils.explain import generate_heatmap, tts_explanation
 
+_BASE_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_HEATMAPS_DIR = os.path.join(_BASE_DIR, "heatmaps")
+
 
 def run_analysis_task(job_id: str, file_path: str, user_id: str):
     job_ref = firestore_db.collection("jobs").document(job_id)
@@ -32,16 +35,16 @@ def run_analysis_task(job_id: str, file_path: str, user_id: str):
 
             if faces:
                 primary = faces[0]
-                os.makedirs("heatmaps", exist_ok=True)
+                os.makedirs(_HEATMAPS_DIR, exist_ok=True)
 
-                face_path = f"heatmaps/{job_id}_face.jpg"
+                face_path = os.path.join(_HEATMAPS_DIR, f"{job_id}_face.jpg")
                 cv2.imwrite(face_path, primary["full"])
-                face_url = f"/{face_path.replace(os.sep, '/')}"
+                face_url = f"/heatmaps/{job_id}_face.jpg"
 
                 heatmap = generate_heatmap(primary["model"])
-                heatmap_path = f"heatmaps/{job_id}_heatmap.jpg"
+                heatmap_path = os.path.join(_HEATMAPS_DIR, f"{job_id}_heatmap.jpg")
                 cv2.imwrite(heatmap_path, heatmap)
-                heatmap_url = f"/{heatmap_path.replace(os.sep, '/')}"
+                heatmap_url = f"/heatmaps/{job_id}_heatmap.jpg"
 
         # ---------------- EXPLANATION + TTS ----------------
         score = float(result.get("fake_probability") or result.get("score", 0.0))
