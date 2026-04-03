@@ -16,7 +16,14 @@ data/
 
 # Generated Outputs
 backend/heatmaps/
-backend/uploads/
+backend/uploads/tmp/
+backend/uploads/*.jpg
+backend/uploads/*.png
+backend/uploads/*.mp4
+backend/uploads/*.mp3
+backend/uploads/*.wav
+backend/uploads/*.mov
+backend/uploads/*.avi
 
 # Python
 __pycache__/
