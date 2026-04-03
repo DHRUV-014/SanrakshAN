@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.firebase_auth import (
-    FIREBASE_KEY_PATH,
+    _firebase_ready,
     analyze_endpoint_user,
     firebase_auth,
     firestore_db,
@@ -115,7 +115,7 @@ def _want_public_sync_analyze(
     """Landing sends X-Public-Demo; prod anonymous sends no Bearer (user is None)."""
     if (x_public_demo or "").strip().lower() in ("1", "true", "yes"):
         return True
-    if os.path.exists(FIREBASE_KEY_PATH) and user is None:
+    if _firebase_ready and user is None:
         return True
     return False
 
