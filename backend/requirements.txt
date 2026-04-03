@@ -22,7 +22,7 @@ torchvision==0.16.2
 torchaudio==2.1.2
 
 # ---- Audio Model ----
-transformers
+transformers==4.40.2
 librosa
 soundfile          # fast WAV/FLAC decoder
 
