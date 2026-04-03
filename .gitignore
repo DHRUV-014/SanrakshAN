@@ -31,5 +31,8 @@ dist/
 # System
 .DS_Store
 
+# Claude
+.claude/
+
 # Archives
 *.zip
