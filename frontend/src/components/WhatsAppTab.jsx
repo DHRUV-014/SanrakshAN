@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Copy, Check, ExternalLink, Smartphone, Webhook, Bot, ArrowRight, Code, MessageCircle } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://your-backend.onrender.com";
+const API_BASE = import.meta.env.VITE_API_URL || "https://trustguard-5olg.onrender.com";
 const WEBHOOK_URL = `${API_BASE}/twilio/whatsapp`;
 
 function LightCopyButton({ text }) {
