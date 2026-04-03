@@ -1,23 +1,34 @@
-# Datasets and Raw Sources
-backend/data/
-backend/data/raw_sources/
+# Secrets & Credentials
+.env
+backend/firebase_key.json
 
-# Model Weights and ML Checkpoints
+# ML Models & Checkpoints
 backend/ml/check/
 backend/ml/best_model.pt
 *.pt
 *.pth
 *.onnx
 
-# Credentials and Environment Variables (CRITICAL)
-backend/firebase_key.json
-.env
-*.json
+# Data & Datasets
+backend/data/
+backend/data/raw_sources/
+data/
 
-# Python and System Cache
+# Generated Outputs
+backend/heatmaps/
+backend/uploads/
+
+# Python
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+.venv/
+
+# Frontend
+node_modules/
+dist/
+
+# System
 .DS_Store
 
 # Archives

@@ -1,6 +1,6 @@
-import { useRef, useEffect, useState } from "react"
+import { useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ShieldCheck, Zap, CheckCircle2, Loader2 } from "lucide-react"
+import { ShieldCheck, Zap, CheckCircle2, Loader2, AlertCircle } from "lucide-react"
 
 import { startCamera, captureFrame } from "../utils/camera"
 
@@ -42,7 +42,6 @@ export default function LivenessChallenge() {
     setRunning(true)
     setResult(null)
 
-    // Step 1: Request camera access (triggers browser permission popup)
     if (!cameraReady) {
       try {
         await startCamera(videoRef)
@@ -56,11 +55,9 @@ export default function LivenessChallenge() {
         setRunning(false)
         return
       }
-      // Small delay to let the video feed stabilize
       await new Promise(r => setTimeout(r, 500))
     }
 
-    // Step 2: Run the liveness challenge
     try {
       const session = await startChallengeSession()
       const sessionId = session.session_id
@@ -89,16 +86,13 @@ export default function LivenessChallenge() {
     setRunning(false)
   }
 
+  const isLive = result?.verdict?.toLowerCase().includes("live")
+
   return (
     <div className="w-full">
-      <h2 className="text-[15px] font-semibold text-white mb-5 flex items-center gap-2">
-        <ShieldCheck size={18} className="text-blue-400 flex-shrink-0" />
-        Liveness Verification
-      </h2>
-
-      {/* Video */}
+      {/* Video feed */}
       <div className="w-full max-w-md mx-auto mb-5">
-        <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-black border border-white/[0.06]">
+        <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
           <video
             ref={videoRef}
             autoPlay
@@ -107,11 +101,11 @@ export default function LivenessChallenge() {
             className={`absolute inset-0 w-full h-full object-cover ${cameraReady ? '' : 'hidden'}`}
           />
 
-          {/* Idle state — camera not started yet */}
+          {/* Idle state */}
           {!cameraReady && !cameraError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#09090b] gap-2 z-10">
-              <ShieldCheck size={28} className="text-zinc-700" />
-              <p className="text-zinc-500 text-[12px] text-center px-4">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 gap-2 z-10">
+              <ShieldCheck size={28} className="text-gray-300" />
+              <p className="text-gray-400 text-[12px] text-center px-4">
                 Click "Start Liveness Test" to begin
               </p>
             </div>
@@ -119,25 +113,25 @@ export default function LivenessChallenge() {
 
           {/* Error state */}
           {cameraError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#09090b] gap-3 z-10">
-              <ShieldCheck size={28} className="text-zinc-600" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 gap-3 z-10 px-6">
+              <AlertCircle size={28} className="text-red-400" />
               {permDenied ? (
                 <>
-                  <p className="text-zinc-400 text-[13px] font-medium text-center px-4">
+                  <p className="text-gray-700 text-[13px] font-medium text-center">
                     Camera permission was blocked
                   </p>
-                  <p className="text-zinc-600 text-[11px] text-center px-6 leading-relaxed">
-                    Click the 🔒 lock icon in your browser's address bar → Set Camera to "Allow" → Reload the page
+                  <p className="text-gray-500 text-[11px] text-center leading-relaxed">
+                    Click the lock icon in your browser's address bar → Set Camera to "Allow" → Reload the page
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-zinc-400 text-[13px] font-medium text-center px-4">
+                  <p className="text-gray-700 text-[13px] font-medium text-center">
                     Could not access camera
                   </p>
                   <button
                     onClick={runChallenge}
-                    className="mt-2 px-5 py-2.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg text-[12px] font-semibold transition-colors"
+                    className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[12px] font-semibold transition-colors"
                   >
                     Retry
                   </button>
@@ -150,21 +144,21 @@ export default function LivenessChallenge() {
 
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Button */}
-      <div className="flex justify-center mb-5">
+      {/* CTA button */}
+      <div className="flex justify-center mb-6">
         <button
           onClick={runChallenge}
           disabled={running}
           className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-[13px] font-semibold transition-all duration-200 min-h-[48px] w-full sm:w-auto max-w-xs
             ${running
-              ? "bg-white/[0.04] border border-white/[0.06] text-zinc-500 cursor-not-allowed"
-              : "bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+              ? "bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md"
             }`}
         >
           {running ? (
             <>
               <Loader2 size={15} className="animate-spin" />
-              Running...
+              Running analysis…
             </>
           ) : (
             <>
@@ -184,39 +178,31 @@ export default function LivenessChallenge() {
             exit={{ opacity: 0, y: -8 }}
             className="w-full max-w-md mx-auto"
           >
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3">
-              <h3 className="text-[12px] font-semibold text-zinc-400 flex items-center gap-2 tracking-wider mb-3">
-                <CheckCircle2 size={13} className="text-emerald-500" />
-                RESULT
+            <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
+              <h3 className="text-[11px] font-semibold text-gray-400 flex items-center gap-2 tracking-widest uppercase">
+                <CheckCircle2 size={13} className="text-green-500" />
+                Result
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 min-w-0 flex-1 flex flex-col items-center justify-center">
-                  <p className="text-xs text-zinc-400 uppercase font-medium mb-1 truncate w-full text-center">Baseline</p>
-                  <p className="text-lg font-semibold tracking-tight text-white font-mono truncate w-full text-center">
-                    {Number(result.baseline_red_mean).toFixed(2)}
-                  </p>
-                </div>
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 min-w-0 flex-1 flex flex-col items-center justify-center">
-                  <p className="text-xs text-zinc-400 uppercase font-medium mb-1 truncate w-full text-center">Flash</p>
-                  <p className="text-lg font-semibold tracking-tight text-white font-mono truncate w-full text-center">
-                    {Number(result.flash_red_mean).toFixed(2)}
-                  </p>
-                </div>
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 min-w-0 flex-1 flex flex-col items-center justify-center">
-                  <p className="text-xs text-zinc-400 uppercase font-medium mb-1 truncate w-full text-center">Delta</p>
-                  <p className="text-lg font-semibold tracking-tight text-white font-mono truncate w-full text-center">
-                    {Number(result.delta_intensity).toFixed(2)}
-                  </p>
-                </div>
+              <div className="grid grid-cols-3 gap-3 w-full">
+                {[
+                  { label: "Baseline", value: Number(result.baseline_red_mean).toFixed(2) },
+                  { label: "Flash", value: Number(result.flash_red_mean).toFixed(2) },
+                  { label: "Delta", value: Number(result.delta_intensity).toFixed(2) },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex flex-col items-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-1">{label}</p>
+                    <p className="text-[15px] font-semibold text-gray-900 font-mono">{value}</p>
+                  </div>
+                ))}
               </div>
 
-              <div className={`mt-3 px-4 py-3 rounded-lg border text-[13px] font-semibold text-center min-h-[44px] flex items-center justify-center
-                ${result.verdict?.toLowerCase().includes("live")
-                  ? "bg-emerald-500/[0.08] border-emerald-500/[0.2] text-emerald-400"
-                  : "bg-red-500/[0.08] border-red-500/[0.2] text-red-400"
-                }`}
-              >
+              <div className={`px-4 py-3 rounded-lg border text-[13px] font-semibold text-center flex items-center justify-center gap-2 ${
+                isLive
+                  ? "bg-green-50 border-green-200 text-green-700"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}>
+                {isLive ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                 {result.verdict}
               </div>
             </div>

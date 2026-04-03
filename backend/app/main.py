@@ -1,13 +1,16 @@
+import logging
 import os
 import uuid
 import time
 import traceback
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 import cv2
 import numpy as np
 
-from fastapi import FastAPI, UploadFile, File, Depends, BackgroundTasks, HTTPException, Query, Header
+from fastapi import FastAPI, UploadFile, File, Depends, BackgroundTasks, HTTPException, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +23,9 @@ from app.firebase_auth import (
 )
 from app.tasks import run_analysis_task
 from uploads.services.services import analyze_media
-from utils.explain import generate_heatmap
+from uploads.services.audio_service import analyze_audio, extract_audio_from_video, _is_video
+from uploads.services.video_service import analyze_video
+from utils.explain import generate_heatmap, explain_audio, tts_explanation, generate_video_heatmap
 from utils.face_engine import FaceEngine
 
 # ✅ HISTORY ROUTE
@@ -37,7 +42,12 @@ app = FastAPI()
 # --------------------------------------------------
 # CORS: Starlette returns 400 "Disallowed CORS ..." on failed preflight (OPTIONS).
 # Regex covers localhost / 127.0.0.1 / ::1 with any port (Vite, preview, etc.).
-_LOCAL_DEV_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+# Also allow Chrome / Firefox extension origins for real-time call monitoring
+_LOCAL_DEV_ORIGIN_REGEX = (
+    r"^(https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+    r"|chrome-extension://[a-z]{32}"
+    r"|moz-extension://[\w-]+)$"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,11 +121,7 @@ def _run_public_sync_analysis(file_path: str, job_id: str) -> dict:
 
     heatmap_url = None
 
-    if (
-        not is_video
-        and result.get("label") != "NO_FACE"
-        and result.get("metadata", {}).get("explainable", False)
-    ):
+    if not is_video and result.get("label") != "NO_FACE":
         engine = FaceEngine()
         with open(file_path, "rb") as f:
             faces = engine.process_image(f.read())
@@ -129,16 +135,38 @@ def _run_public_sync_analysis(file_path: str, job_id: str) -> dict:
             heatmap_url = f"/{heatmap_path.replace(os.sep, '/')}"
 
     score = float(result.get("fake_probability") or result.get("score", 0.0))
+    label = result["label"]
+
+    # Generate explanation text
+    pct = round(score * 100, 1)
+    if label == "FAKE":
+        explanation = (
+            f"Deepfake detected with {pct}% confidence. "
+            "The highlighted regions show where the AI found manipulation artifacts — "
+            "typically around facial boundaries, skin texture, or eye regions. "
+            "These inconsistencies are characteristic of GAN-generated or face-swapped imagery."
+        )
+    elif label == "REAL":
+        explanation = (
+            f"Image appears authentic ({round((1 - score) * 100, 1)}% confidence). "
+            "No significant manipulation artifacts were detected in facial regions."
+        )
+    else:
+        explanation = "Analysis inconclusive — no faces detected or image quality too low."
+
+    tts_url = tts_explanation(explanation, job_id)
 
     out = {
         "job_id": job_id,
         "status": "completed",
-        "label": result["label"],
+        "label": label,
         "score": score,
         "heatmap_url": heatmap_url,
         "faces_detected": result.get("faces_detected", 0),
         "confidence": result.get("confidence"),
         "metadata": result.get("metadata", {}),
+        "explanation": explanation,
+        "tts_url": tts_url,
     }
     print(f"/analyze sync result: label={out['label']} score={out['score']}")
     return out
@@ -333,6 +361,119 @@ def get_verification_result(session_id: str):
 # --------------------------------------------------
 # POST /monitor/frame
 # --------------------------------------------------
+# --------------------------------------------------
+# POST /analyze-audio
+# --------------------------------------------------
+@app.post("/analyze-audio")
+async def analyze_audio_endpoint(file: UploadFile = File(...)):
+    """
+    Unified audio / video deepfake detection endpoint.
+
+    Audio files (WAV, MP3, FLAC, OGG, WebM, M4A):
+      → audio-only pipeline (CNN → wav2vec2 → heuristic)
+      Returns: { label, confidence, method, processing_time, input_type }
+
+    Video files (MP4, AVI, MOV, MKV):
+      → audio + visual fusion pipeline (MobileNetV3 frames + audio CNN)
+      Returns: { label, confidence, method, processing_time, input_type,
+                 audio_result, visual_result }
+    """
+    if file is None:
+        raise HTTPException(status_code=400, detail="File is required")
+
+    # .webm treated as audio — browser MediaRecorder produces audio-only webm
+    audio_exts = {".wav", ".flac", ".mp3", ".ogg", ".webm", ".m4a"}
+    video_exts = {".mp4", ".avi", ".mov", ".mkv"}
+    allowed = audio_exts | video_exts
+
+    ext = os.path.splitext(file.filename or "")[-1].lower()
+    if ext not in allowed:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported format '{ext}'. Accepted: {', '.join(sorted(allowed))}",
+        )
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    job_id    = uuid.uuid4().hex
+    safe_name = os.path.basename(file.filename or "upload")
+    file_path = os.path.join(UPLOAD_DIR, f"{job_id}_{safe_name}")
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(contents)
+
+        if _is_video(file_path):
+            # Full audio + visual fusion
+            result = analyze_video(file_path)
+
+            # Video heatmap — run on a saved copy before temp file is deleted
+            vid_heatmap = generate_video_heatmap(
+                file_path, n_frames=6, out_dir="heatmaps", job_id=job_id
+            )
+            result["heatmap_url"]      = vid_heatmap.get("heatmap_url")
+            result["key_frame_index"]  = vid_heatmap.get("key_frame_index")
+            result["frame_scores"]     = vid_heatmap.get("frame_scores", [])
+
+            # Visual explanation text
+            label = result.get("label", "UNKNOWN")
+            conf  = result.get("confidence", 0.5)
+            pct   = round(conf * 100, 1)
+            if label == "FAKE":
+                n_suspicious = sum(1 for s in result["frame_scores"] if s > 0.5)
+                result["explanation"] = (
+                    f"Deepfake detected with {pct}% confidence. "
+                    f"{n_suspicious} of {len(result['frame_scores'])} sampled frames "
+                    "show visual manipulation artifacts. "
+                    "The highlighted regions indicate where the AI detected inconsistencies "
+                    "in skin texture, facial boundaries, or lighting."
+                )
+            else:
+                result["explanation"] = (
+                    f"Video appears authentic ({pct}% confidence). "
+                    "No significant visual manipulation artifacts were detected across sampled frames."
+                )
+
+            result["tts_url"] = tts_explanation(result["explanation"], job_id)
+
+        else:
+            # Audio-only pipeline — keep a copy for spectral explanation
+            import shutil, tempfile
+            tmp_copy = tempfile.NamedTemporaryFile(
+                suffix=os.path.splitext(file_path)[-1], delete=False
+            )
+            tmp_copy.close()
+            shutil.copy2(file_path, tmp_copy.name)
+
+            result = analyze_audio(file_path)
+            result["input_type"] = "audio"
+
+            # Explanation from spectral features
+            result["explanation"] = explain_audio(result, audio_path=tmp_copy.name)
+            result["tts_url"]     = tts_explanation(result["explanation"], job_id)
+
+            try:
+                os.unlink(tmp_copy.name)
+            except OSError:
+                pass
+
+        return result
+
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error("Analysis error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Analysis failed")
+    finally:
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass
+
+
 @app.post("/monitor/frame")
 async def monitor_video_frame(
     file: UploadFile = File(...),
@@ -363,3 +504,224 @@ async def monitor_video_frame(
     result = video_monitors[client_id].analyze_frame(frame)
 
     return result
+
+
+# ==================================================
+# WHATSAPP WEBHOOK
+# ==================================================
+import httpx
+
+WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "sanrakshan_verify_2024")
+WA_TOKEN        = os.environ.get("WA_TOKEN", "")
+WA_PHONE_ID     = os.environ.get("WA_PHONE_ID", "")
+
+@app.get("/whatsapp/webhook")
+async def wa_verify(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+):
+    if hub_mode == "subscribe" and hub_verify_token == WA_VERIFY_TOKEN:
+        return int(hub_challenge)
+    raise HTTPException(status_code=403, detail="Verification failed")
+
+@app.post("/whatsapp/webhook")
+async def wa_webhook(request: Request, background_tasks: BackgroundTasks):
+    body = await request.json()
+    background_tasks.add_task(_process_wa_message, body)
+    return {"status": "ok"}
+
+async def _process_wa_message(body: dict):
+    """Process incoming WhatsApp message asynchronously."""
+    if not WA_TOKEN or not WA_PHONE_ID:
+        logger.warning("WhatsApp credentials not configured.")
+        return
+    try:
+        for entry in body.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                messages = value.get("messages", [])
+                for msg in messages:
+                    from_no   = msg.get("from")
+                    msg_type  = msg.get("type")
+                    if msg_type not in ("image", "audio", "video") or not from_no:
+                        continue
+                    media_id = msg[msg_type].get("id")
+                    if not media_id:
+                        continue
+                    await _wa_analyze_and_reply(from_no, media_id, msg_type)
+    except Exception as exc:
+        logger.error("WhatsApp webhook processing failed: %s", exc, exc_info=True)
+
+async def _wa_analyze_and_reply(from_no: str, media_id: str, media_type: str):
+    headers = {"Authorization": f"Bearer {WA_TOKEN}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Get media URL
+        info_res = await client.get(f"https://graph.facebook.com/v18.0/{media_id}", headers=headers)
+        media_url = info_res.json().get("url")
+        if not media_url:
+            return
+        # Download media
+        media_res = await client.get(media_url, headers=headers)
+        media_bytes = media_res.content
+
+    ext_map = {"image": "jpg", "audio": "ogg", "video": "mp4"}
+    ext      = ext_map.get(media_type, "bin")
+    job_id   = uuid.uuid4().hex
+    file_path = os.path.join(UPLOAD_DIR, f"{job_id}_wa.{ext}")
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(media_bytes)
+
+        if media_type == "audio":
+            result = analyze_audio(file_path)
+        else:
+            is_video = media_type == "video"
+            result = analyze_media(file_path=file_path, is_video=is_video)
+
+        label = result.get("label", "UNKNOWN")
+        conf  = round((result.get("confidence") or result.get("score") or 0) * 100, 1)
+        emoji = "✅" if label == "REAL" else "🚨"
+        reply = f"{emoji} *SanrakshAN Analysis*\nVerdict: *{label}*\nConfidence: {conf}%"
+        if result.get("explanation"):
+            expl = result["explanation"][:200]
+            reply += f"\n\n_{expl}_"
+
+    except Exception as exc:
+        logger.error("WA analysis failed: %s", exc)
+        reply = "⚠️ Analysis failed. Please send a clearer image or audio file."
+    finally:
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass
+
+    # Send reply
+    async with httpx.AsyncClient(timeout=15) as client:
+        await client.post(
+            f"https://graph.facebook.com/v18.0/{WA_PHONE_ID}/messages",
+            headers={"Authorization": f"Bearer {WA_TOKEN}", "Content-Type": "application/json"},
+            json={
+                "messaging_product": "whatsapp",
+                "to": from_no,
+                "type": "text",
+                "text": {"body": reply},
+            },
+        )
+
+
+# ==================================================
+# TWILIO WHATSAPP BOT  (easier demo setup)
+# ==================================================
+from urllib.parse import urlencode
+
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+
+def _twilio_twiml(message: str) -> str:
+    """Return a TwiML response string."""
+    escaped = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{escaped}</Message></Response>'
+
+@app.post("/twilio/whatsapp")
+async def twilio_whatsapp(request: Request):
+    """
+    Twilio WhatsApp sandbox webhook.
+
+    Setup (free, 2 min):
+    1. Sign up at twilio.com
+    2. Go to Messaging → Try it out → Send a WhatsApp message
+    3. Set webhook URL to: https://YOUR_BACKEND/twilio/whatsapp
+    4. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN env vars (for signature verification)
+
+    The bot accepts images, audio, or video sent to the sandbox number
+    and replies with the SanrakshAN deepfake verdict.
+    """
+    from fastapi.responses import Response as FastAPIResponse
+
+    form   = await request.form()
+    body   = form.get("Body", "").strip()
+    from_  = form.get("From", "")
+    num_media = int(form.get("NumMedia", 0))
+
+    # Optionally verify Twilio signature (skip in dev)
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+        from twilio.request_validator import RequestValidator
+        validator  = RequestValidator(TWILIO_AUTH_TOKEN)
+        url        = str(request.url)
+        sig        = request.headers.get("X-Twilio-Signature", "")
+        form_dict  = dict(form)
+        if not validator.validate(url, form_dict, sig):
+            return FastAPIResponse(content=_twilio_twiml("Unauthorized"), media_type="application/xml", status_code=403)
+
+    if num_media == 0:
+        # Text-only message
+        reply = (
+            "👋 *SanrakshAN Deepfake Detector*\n\n"
+            "Send me an *image*, *audio clip*, or *video* and I'll tell you if it's real or AI-generated.\n\n"
+            "Supported formats: JPG · PNG · MP3 · WAV · OGG · MP4 · MOV"
+        )
+        return FastAPIResponse(content=_twilio_twiml(reply), media_type="application/xml")
+
+    # Download and analyze first media item
+    media_url         = form.get("MediaUrl0", "")
+    media_content_type = form.get("MediaContentType0", "")
+
+    ext_map = {
+        "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+        "audio/ogg": "ogg",  "audio/mpeg": "mp3", "audio/wav": "wav",
+        "audio/webm": "webm",
+        "video/mp4": "mp4",  "video/quicktime": "mov",
+    }
+    ext = ext_map.get(media_content_type, "bin")
+    is_audio_type = media_content_type.startswith("audio/")
+    is_video_type = media_content_type.startswith("video/")
+
+    job_id    = uuid.uuid4().hex
+    file_path = os.path.join(UPLOAD_DIR, f"{job_id}_twilio.{ext}")
+
+    try:
+        # Download media (Twilio requires auth)
+        auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID else None
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(media_url, auth=auth)
+        with open(file_path, "wb") as f:
+            f.write(resp.content)
+
+        # Run analysis
+        if is_audio_type:
+            result = analyze_audio(file_path)
+        elif is_video_type:
+            from uploads.services.video_service import analyze_video
+            result = analyze_video(file_path)
+        else:
+            result = analyze_media(file_path=file_path, is_video=False)
+
+        label = result.get("label", "UNKNOWN")
+        conf  = round((result.get("confidence") or result.get("score") or 0) * 100, 1)
+        emoji = "✅" if label == "REAL" else "🚨"
+        media_kind = "audio" if is_audio_type else ("video" if is_video_type else "image")
+
+        reply = (
+            f"{emoji} *SanrakshAN Analysis*\n"
+            f"Type: {media_kind}\n"
+            f"Verdict: *{label}*\n"
+            f"Confidence: {conf}%"
+        )
+        if result.get("explanation"):
+            expl = result["explanation"][:220]
+            reply += f"\n\n{expl}"
+
+    except Exception as exc:
+        logger.error("Twilio WA analysis failed: %s", exc, exc_info=True)
+        reply = "⚠️ Analysis failed. Please send a clearer file and try again."
+    finally:
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except OSError:
+            pass
+
+    return FastAPIResponse(content=_twilio_twiml(reply), media_type="application/xml")

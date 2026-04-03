@@ -24,3 +24,17 @@ torchaudio==2.1.2
 # ---- Audio Model ----
 transformers
 librosa
+soundfile          # fast WAV/FLAC decoder
+
+# ---- Video audio extraction ----
+# ffmpeg binary is pre-installed on Render Ubuntu instances.
+# ffmpeg-python provides a thin Python wrapper (optional, we use subprocess directly).
+
+# ---- Explainability / TTS ----
+gtts
+
+# ---- Async HTTP (WhatsApp webhook) ----
+httpx
+
+# ---- Twilio WhatsApp bot ----
+twilio

@@ -11,7 +11,7 @@ export async function analyzeMedia(base64Image) {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
   const prompt = `
-    Act as TrustGuard's core Forensic Engine. Perform an enterprise-grade deepfake analysis.
+    Act as SanrakshAN's core Forensic Engine. Perform an enterprise-grade deepfake analysis.
 
     Examine the provided media for:
     - Biometric consistency (facial landmarks, pupillary reflections).
@@ -63,7 +63,7 @@ export async function analyzeMedia(base64Image) {
 
     return forensicData;
   } catch (error) {
-    console.error("TrustGuard Engine Error:", error);
+    console.error("SanrakshAN Engine Error:", error);
     throw error;
   }
 }

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SanrakshAN Audio Shield</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 300px;
+      background: #09090b;
+      color: #e4e4e7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .header-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #9333ea;
+      flex-shrink: 0;
+    }
+    .header-title { font-weight: 700; font-size: 14px; color: #fff; }
+    .header-sub   { font-size: 11px; color: #71717a; }
+
+    /* ── Body ── */
+    .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── Status pill ── */
+    .status-row { display: flex; align-items: center; gap: 8px; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      border: 1px solid;
+    }
+    .status-pill.idle    { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); color: #71717a; }
+    .status-pill.active  { background: rgba(34,197,94,0.08);   border-color: rgba(34,197,94,0.25);   color: #4ade80; }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .status-pill.idle   .status-dot { background: #52525b; }
+    .status-pill.active .status-dot { background: #22c55e; animation: pulse 1.4s ease-in-out infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+
+    /* ── Result card ── */
+    .result-card {
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.02);
+      padding: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .result-card.visible { display: flex; }
+
+    .result-row { display: flex; justify-content: space-between; align-items: center; }
+    .result-label { font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 0.06em; }
+    .result-value { font-weight: 700; font-size: 15px; }
+    .result-value.real { color: #4ade80; }
+    .result-value.fake { color: #f87171; }
+
+    .confidence-bar-wrap {
+      height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden;
+    }
+    .confidence-bar {
+      height: 100%; border-radius: 2px; transition: width 0.4s ease;
+    }
+    .confidence-bar.real { background: #22c55e; }
+    .confidence-bar.fake { background: #ef4444; }
+
+    .result-meta {
+      font-size: 10px; color: #52525b;
+      display: flex; justify-content: space-between;
+    }
+
+    /* ── Alert banner ── */
+    .alert {
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    .alert.visible { display: flex; }
+    .alert.real { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25); color: #4ade80; }
+    .alert.fake { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); color: #f87171; }
+
+    /* ── Button ── */
+    .btn {
+      width: 100%;
+      padding: 9px 0;
+      border-radius: 8px;
+      border: 1px solid;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:active { opacity: 0.8; }
+    .btn.start  { background: #9333ea; border-color: #7c22d4; color: #fff; }
+    .btn.stop   { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: #f87171; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      font-size: 10px;
+      color: #3f3f46;
+      text-align: center;
+    }
+    .footer a { color: #6b21a8; text-decoration: none; }
+    .footer a:hover { color: #9333ea; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-dot"></div>
+    <div>
+      <div class="header-title">SanrakshAN Audio Shield</div>
+      <div class="header-sub">Real-time deepfake detection</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- Status indicator -->
+    <div class="status-row">
+      <div id="statusPill" class="status-pill idle">
+        <span class="status-dot"></span>
+        <span id="statusText">Idle</span>
+      </div>
+    </div>
+
+    <!-- Latest result card -->
+    <div id="resultCard" class="result-card">
+      <div class="result-row">
+        <span class="result-label">Verdict</span>
+        <span id="resultLabel" class="result-value">—</span>
+      </div>
+      <div class="confidence-bar-wrap">
+        <div id="confidenceBar" class="confidence-bar" style="width: 0%"></div>
+      </div>
+      <div class="result-meta">
+        <span id="confidenceText">—</span>
+        <span id="methodText">—</span>
+      </div>
+    </div>
+
+    <!-- Alert banner -->
+    <div id="alertBanner" class="alert">
+      <span id="alertIcon"></span>
+      <span id="alertText"></span>
+    </div>
+
+    <!-- Action button -->
+    <button id="actionBtn" class="btn start">Start Monitoring</button>
+  </div>
+
+  <div class="footer">
+    Powered by <a href="#" target="_blank">SanrakshAN</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
