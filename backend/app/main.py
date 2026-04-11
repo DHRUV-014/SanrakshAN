@@ -74,15 +74,20 @@ _LOCAL_DEV_ORIGIN_REGEX = (
 
 _FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
 
+# Explicit known origins — always allowed regardless of regex
+_KNOWN_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "https://sanrakshan-lyart.vercel.app",  # production frontend
+]
+if _FRONTEND_URL:
+    _KNOWN_ORIGINS.append(_FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        *([_FRONTEND_URL] if _FRONTEND_URL else []),
-    ],
+    allow_origins=_KNOWN_ORIGINS,
     allow_origin_regex=(
         r"^(https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
         r"|chrome-extension://[a-z]{32}"
@@ -94,6 +99,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --------------------------------------------------
+# HEALTH / PING  (keep Render alive)
+# --------------------------------------------------
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
+
 
 # --------------------------------------------------
 # STATIC FILES
@@ -659,6 +672,47 @@ async def _wa_analyze_and_reply(from_no: str, media_id: str, media_type: str):
 # TWILIO WHATSAPP BOT  (easier demo setup)
 # ==================================================
 from urllib.parse import urlencode
+from pydantic import BaseModel
+
+# ─────────────────────────────────────────────────
+# Tweet Scanner endpoint
+# ─────────────────────────────────────────────────
+
+class TweetScanRequest(BaseModel):
+    query: str
+    max_results: int = 15
+
+
+@app.post("/scan-tweets")
+async def scan_tweets(body: TweetScanRequest):
+    """
+    Search X (Twitter) for tweets matching `query` and score each for
+    misinformation / suspicious signals.
+
+    Requires TWITTER_BEARER_TOKEN env var.
+    """
+    from uploads.services.tweet_service import search_tweets
+
+    query = body.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    try:
+        results = search_tweets(query, max_results=body.max_results)
+        suspicious = sum(1 for t in results if t["label"] == "SUSPICIOUS")
+        return {
+            "query": query,
+            "total": len(results),
+            "suspicious_count": suspicious,
+            "tweets": results,
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.error("Tweet scan failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Tweet scan failed")
+
+
 
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN", "")

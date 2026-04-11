@@ -59,6 +59,14 @@ export default function Dashboard({ user, onLogout }) {
   const fileInputRef = useRef(null);
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+  // Keep Render free-tier instance awake — ping every 10 min
+  useEffect(() => {
+    const ping = () => fetch(`${API_URL}/ping`).catch(() => {});
+    ping(); // immediate ping on mount
+    const id = setInterval(ping, 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [API_URL]);
+
   useEffect(() => { setSidebarOpen(false); }, [activeTab]);
 
   const handleFileUpload = async (e) => {
