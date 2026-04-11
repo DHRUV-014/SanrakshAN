@@ -68,28 +68,24 @@ export default function Dashboard({ user, onLogout }) {
     reader.onload = () => setImage(reader.result);
     reader.readAsDataURL(file);
     setSteps(INITIAL_STEPS);
-    setStatus("PENDING");
+    setStatus("PROCESSING");
     setResult(null);
-    const id = await uploadFile(file);
-    setJobId(id);
-  };
-
-  useEffect(() => {
-    if (!jobId || status === "COMPLETED" || status === "FAILED") return;
-    const interval = setInterval(async () => {
-      const data = await checkJobStatus(jobId);
-      setStatus(data.status);
-      if (data.status === "PROCESSING") {
-        setSteps(s => s.map(x => (x.id === "2" || x.id === "3" ? { ...x, status: "loading" } : x)));
-      }
-      if (data.status === "COMPLETED") {
+    setSteps(s => s.map(x => (x.id === "2" || x.id === "3" ? { ...x, status: "loading" } : x)));
+    try {
+      const data = await uploadFile(file);
+      if (data.label) {
         setResult(data);
+        setStatus("COMPLETED");
         setSteps(s => s.map(x => ({ ...x, status: "completed" })));
-        clearInterval(interval);
+      } else {
+        setStatus("FAILED");
+        setSteps(s => s.map(x => ({ ...x, status: "error" })));
       }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [jobId, status]);
+    } catch {
+      setStatus("FAILED");
+      setSteps(s => s.map(x => ({ ...x, status: "error" })));
+    }
+  };
 
   const detectionNav = NAV.filter(n => n.section === "detection");
   const toolsNav     = NAV.filter(n => n.section === "tools");

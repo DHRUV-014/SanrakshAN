@@ -35,7 +35,7 @@ export const uploadFile = async (file) => {
     },
   });
 
-  return response.data.job_id;
+  return response.data;
 };
 
 // -------------------------------
