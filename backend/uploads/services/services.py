@@ -5,14 +5,21 @@ from typing import Dict, Any, List
 
 import cv2
 import numpy as np
-import torch
-from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 from utils.face_engine import FaceEngine
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_ID = "dima806/deepfake_vs_real_image_detection"
 FAKE_CLASS_INDEX = 1
+_SERVICES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
+
+try:
+    import torch
+    from transformers import AutoImageProcessor, AutoModelForImageClassification
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _TORCH_AVAILABLE = True
+except Exception:
+    _TORCH_AVAILABLE = False
+    DEVICE = None
 
 
 # ================= CALIBRATED DECISION LOGIC =================
@@ -48,14 +55,16 @@ def decide_label(fake_probs: List[float]):
 
 @lru_cache(maxsize=1)
 def load_models():
+    if not _TORCH_AVAILABLE:
+        raise RuntimeError("PyTorch / transformers not available on this instance.")
+
     processor = AutoImageProcessor.from_pretrained(MODEL_ID)
     base_model = AutoModelForImageClassification.from_pretrained(MODEL_ID)
     base_model.to(DEVICE).eval()
 
-    finetuned_model = AutoModelForImageClassification.from_pretrained(MODEL_ID)
-    finetuned_path = "backend/ml/best_model.pt"  # Ensure this path is correct
-
+    finetuned_path = os.path.join(_SERVICES_DIR, "ml", "best_model.pt")
     if os.path.exists(finetuned_path):
+        finetuned_model = AutoModelForImageClassification.from_pretrained(MODEL_ID)
         state = torch.load(finetuned_path, map_location=DEVICE)
         finetuned_model.load_state_dict(state, strict=False)
         finetuned_model.to(DEVICE).eval()
@@ -93,7 +102,14 @@ def _analyze_image(file_path: str, engine: FaceEngine) -> Dict[str, Any]:
         faces = engine.process_image(f.read())
 
     if not faces:
-        return {"score": 0.0, "label": "NO_FACE", "faces_detected": 0, "metadata": {}}
+        return {"score": 0.0, "label": "NO_FACE", "faces_detected": 0, "confidence": 0.0, "metadata": {}}
+
+    if not _TORCH_AVAILABLE:
+        return {
+            "score": 0.5, "label": "UNCERTAIN", "faces_detected": len(faces),
+            "confidence": 0.5,
+            "metadata": {"model": "unavailable", "reason": "ML model not loaded — PyTorch unavailable"}
+        }
 
     base_model, finetuned_model, processor = load_models()
     fake_probs = [_get_ensemble_prob(f["model"], base_model, finetuned_model, processor) for f in faces]
