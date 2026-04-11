@@ -73,15 +73,20 @@ export default function Dashboard({ user, onLogout }) {
     setSteps(s => s.map(x => (x.id === "2" || x.id === "3" ? { ...x, status: "loading" } : x)));
     try {
       const data = await uploadFile(file);
-      if (data.label) {
+      if (data && data.label) {
         setResult(data);
         setStatus("COMPLETED");
         setSteps(s => s.map(x => ({ ...x, status: "completed" })));
+      } else if (data && data.status === "error") {
+        console.error("Analysis error:", data.message);
+        setStatus("FAILED");
+        setSteps(s => s.map(x => ({ ...x, status: "error" })));
       } else {
         setStatus("FAILED");
         setSteps(s => s.map(x => ({ ...x, status: "error" })));
       }
-    } catch {
+    } catch (err) {
+      console.error("Upload failed:", err?.message || err);
       setStatus("FAILED");
       setSteps(s => s.map(x => ({ ...x, status: "error" })));
     }
@@ -255,6 +260,14 @@ export default function Dashboard({ user, onLogout }) {
                     <h1 className="text-[20px] font-bold text-gray-900 dark:text-white">Media Analysis</h1>
                     <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">Upload an image or video to run deepfake detection.</p>
                   </div>
+
+                  {/* Processing notice */}
+                  {status === "PROCESSING" && (
+                    <div className="flex items-center gap-2.5 px-4 py-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl text-[12px] text-blue-700 dark:text-blue-300">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+                      Analyzing… This may take up to 2 minutes on first use while the AI model loads.
+                    </div>
+                  )}
 
                   {/* Upload zone */}
                   <div

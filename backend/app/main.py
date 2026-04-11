@@ -37,6 +37,29 @@ from uploads.services.monitor_service import VideoCallMonitor
 
 app = FastAPI()
 
+
+@app.on_event("startup")
+async def preload_ml_models():
+    """
+    Kick off model download in a background thread immediately on startup.
+    This warms the lru_cache so the first /analyze request doesn't cold-start.
+    Server binds and serves normally while the download happens.
+    """
+    import threading
+
+    def _load():
+        try:
+            from uploads.services.services import load_models, _TORCH_AVAILABLE
+            if _TORCH_AVAILABLE:
+                load_models()
+                print("✅ ML models preloaded and cached")
+            else:
+                print("⚠️ PyTorch not available — skipping model preload")
+        except Exception as exc:
+            print(f"⚠️ Model preload failed (will retry on first request): {exc}")
+
+    threading.Thread(target=_load, daemon=True).start()
+
 # --------------------------------------------------
 # CORS
 # --------------------------------------------------

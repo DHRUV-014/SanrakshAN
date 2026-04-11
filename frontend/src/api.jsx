@@ -7,7 +7,7 @@ import { auth } from "./firebase";
 // -------------------------------
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
-  timeout: 30000,
+  timeout: 180000, // 3 minutes — model download on cold start can take >30s
 });
 
 // -------------------------------
