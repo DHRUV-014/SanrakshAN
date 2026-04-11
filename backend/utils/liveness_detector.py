@@ -1,6 +1,12 @@
 import cv2
 import numpy as np
-import mediapipe as mp
+
+try:
+    import mediapipe as mp
+    _MP_AVAILABLE = True
+except Exception:
+    mp = None
+    _MP_AVAILABLE = False
 
 
 class LivenessDetector:
@@ -19,7 +25,7 @@ class LivenessDetector:
         self._prev_nose = None  # (x, y) in normalized coordinates
 
         try:
-            mp_solutions = getattr(mp, "solutions", None)
+            mp_solutions = getattr(mp, "solutions", None) if _MP_AVAILABLE else None
             if mp_solutions is not None and hasattr(mp_solutions, "face_mesh"):
                 mp_face_mesh = mp_solutions.face_mesh
                 self._face_mesh = mp_face_mesh.FaceMesh(
